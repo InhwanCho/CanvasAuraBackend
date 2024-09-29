@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import { PrismaClient } from '@prisma/client';
 
 const app = express();
 const server = createServer(app);
@@ -11,28 +12,49 @@ const io = new Server(server, {
   },
 });
 
+const prisma = new PrismaClient();
+const a = await prisma.drawHistory.findMany({
+  where: { userId: 'dffd8989-0384-4ec5-94af-fbdc4b0ff685 '},
+})
+
+// 메모리 내 상태 저장소
+const boardStates = {};
+
 io.on("connection", (socket) => {
+  const { boardId } = socket.handshake.query;
+  socket.join(boardId);  
+
   socket.on("client-ready", () => {
-    socket.broadcast.emit("get-canvas-state");
+    const drawHistory = boardStates[boardId] || [];
+    socket.emit("canvas-state-from-server", drawHistory);
   });
 
   socket.on("canvas-state", (state) => {
-    console.log("received canvas state");
-    socket.broadcast.emit("canvas-state-from-server", state);
+    boardStates[boardId] = state;
+    socket.to(boardId).emit("canvas-state-from-server", state);
   });
 
-  socket.on("draw-line", ({ prevPoint, currentPoint, color }) => {
-    socket.broadcast.emit("draw-line", { prevPoint, currentPoint, color });
+  socket.on("draw-line", ({ prevPoint, currentPoint, color, userId }) => {
+    const newDraw = {
+      path: `M ${prevPoint.x} ${prevPoint.y} L ${currentPoint.x} ${currentPoint.y}`,
+      color,
+      userId,
+    };
+    if (!boardStates[boardId]) {
+      boardStates[boardId] = [];
+    }
+    boardStates[boardId].push(newDraw);
+    socket.to(boardId).emit("draw-line", { prevPoint, currentPoint, color, userId });
   });
 
-  socket.on("clear", () => io.emit("clear"));
-
-  socket.on("undo", (state) => {
-    socket.broadcast.emit("undo", state);
+  socket.on("undo", ({ newDrawHistory }) => {
+    boardStates[boardId] = newDrawHistory;
+    socket.to(boardId).emit("canvas-state-from-server", newDrawHistory);
   });
 
-  socket.on("redo", (state) => {
-    socket.broadcast.emit("redo", state);
+  socket.on("redo", ({ newDrawHistory }) => {
+    boardStates[boardId] = newDrawHistory;
+    socket.to(boardId).emit("canvas-state-from-server", newDrawHistory);
   });
 });
 

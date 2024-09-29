@@ -11,11 +11,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^5.20.0",
     "express": "^4.21.0",
     "nodemon": "^3.1.7",
     "socket.io": "^4.8.0"
   },
   "devDependencies": {
-    "@types/node": "^22.7.3"
+    "@types/node": "^22.7.3",
+    "prisma": "^5.20.0"
   }
 }
