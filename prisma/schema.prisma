@@ -7,18 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id          String        @id @default(cuid())
-  name        String?
-  email       String        @unique
-  password    String
-  imageUrl    String        @default("/characters/anonymous.png")
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  DrawHistory DrawHistory[]
-}
-
-model board {
+model Board {
   id           String         @id
   title        String
   orgId        String
@@ -26,29 +15,44 @@ model board {
   authorName   String
   imageUrl     String
   createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  userfavorite userfavorite[]
-  DrawHistory  DrawHistory[]
-}
-
-model userfavorite {
-  id      String @id
-  orgId   String
-  userId  String
-  boardId String
-  board   board  @relation(fields: [boardId], references: [id], map: "UserFavorite_boardId_fkey")
-
-  @@unique([userId, boardId], map: "UserFavorite_userId_boardId_key")
-  @@index([boardId], map: "UserFavorite_boardId_fkey")
+  updatedAt    DateTime
+  drawhistory  DrawHistory[]
+  userfavorite UserFavorite[]
 }
 
 model DrawHistory {
   id        String   @id @default(cuid())
   boardId   String
   userId    String
-  path      String   @db.Text
+  path      Json
   color     String
   createdAt DateTime @default(now())
-  board     board    @relation(fields: [boardId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  bounds    Json
+  board     Board    @relation(fields: [boardId], references: [id], map: "DrawHistory_boardId_fkey")
+  user      User     @relation(fields: [userId], references: [id], map: "DrawHistory_userId_fkey")
+
+  @@index([boardId], map: "DrawHistory_boardId_fkey")
+  @@index([userId], map: "DrawHistory_userId_fkey")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name        String?
+  email       String        @unique(map: "User_email_key")
+  password    String
+  imageUrl    String        @default("/characters/anonymous.png")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  drawhistory DrawHistory[]
+}
+
+model UserFavorite {
+  id      String @id
+  orgId   String
+  userId  String
+  boardId String
+  board   Board  @relation(fields: [boardId], references: [id], map: "UserFavorite_boardId_fkey")
+
+  @@unique([userId, boardId], map: "UserFavorite_userId_boardId_key")
+  @@index([boardId], map: "UserFavorite_boardId_fkey")
 }
