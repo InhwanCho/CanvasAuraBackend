@@ -55,26 +55,29 @@ io.on("connection", async (socket) => {
           bounds: bounds as Prisma.InputJsonValue,
         },
       });
-
+  
       if (!boardStates[boardId]) {
         boardStates[boardId] = [];
       }
       boardStates[boardId].push(newDraw);
-
+  
       if (!userDrawHistories[boardId][userId]) {
         userDrawHistories[boardId][userId] = [];
       }
       userDrawHistories[boardId][userId].push(newDraw);
-
-      // 새로운 그리기가 추가될 때 redo 히스토리 초기화
+  
+      // 새 드로잉이 추가되면 redo 히스토리 초기화
       userRedoHistories[boardId][userId] = [];
-
+  
+      // 모든 클라이언트에 보드 상태 전송
       io.to(boardId).emit("canvas-state-from-server", boardStates[boardId]);
-      socket.emit("draw-complete", newDraw);
+      socket.emit("draw-complete", newDraw);  // 클라이언트에 완료 응답
     } catch (error) {
-      console.error("그림 저장 오류:", error);
+      console.error("draw 작업 중 오류 발생:", error);
+      socket.emit("error", "그리기 중 오류가 발생했습니다.");
     }
   });
+  
 
   socket.on("redo", async ({ boardId, userId }) => {
     const redoHistory = userRedoHistories[boardId][userId];
@@ -125,7 +128,9 @@ io.on("connection", async (socket) => {
     const lastDraw = userHistory.pop();
     if (!lastDraw) return;
 
-    boardStates[boardId] = boardStates[boardId].filter((draw) => draw.id !== lastDraw.id);
+    boardStates[boardId] = boardStates[boardId].filter(
+      (draw) => draw.id !== lastDraw.id
+    );
 
     if (!userRedoHistories[boardId][userId]) {
       userRedoHistories[boardId][userId] = [];
@@ -141,6 +146,41 @@ io.on("connection", async (socket) => {
     } catch (error) {
       console.error("undo 작업 중 오류 발생:", error);
       socket.emit("error", "되돌리기 작업 중 오류가 발생했습니다.");
+    }
+  });
+
+  socket.on("move", async ({ boardId, movedLayers }) => {
+    try {
+      // movedLayers에 있는 레이어들의 정보를 업데이트
+      const updatedLayers = await Promise.all(
+        movedLayers.map(async (layer: DrawHistory) => {
+          // 레이어의 좌표나 경로를 업데이트
+          await prisma.drawHistory.update({
+            where: { id: layer.id },
+            data: {
+              path: layer.path as Prisma.InputJsonValue,
+              bounds: layer.bounds as Prisma.InputJsonValue,
+            },
+          });
+          return layer;
+        })
+      );
+
+      // 서버의 boardStates를 갱신
+      if (boardStates[boardId]) {
+        boardStates[boardId] = boardStates[boardId].map((layer) => {
+          const movedLayer = updatedLayers.find(
+            (moved) => moved.id === layer.id
+          );
+          return movedLayer ? movedLayer : layer;
+        });
+      }
+
+      // 같은 보드에 접속한 모든 클라이언트에게 보드 상태 전송
+      io.to(boardId).emit("canvas-state-from-server", boardStates[boardId]);
+    } catch (error) {
+      console.error("move 작업 중 오류 발생:", error);
+      socket.emit("error", "물체 이동 중 오류가 발생했습니다.");
     }
   });
 });
